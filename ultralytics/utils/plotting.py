@@ -1071,7 +1071,8 @@ def plot_images(
     mosaic = np.full((int(ns * h), int(ns * w), 3), 255, dtype=np.uint8)  # init
     for i in range(bs):
         x, y = int(w * (i // ns)), int(h * (i % ns))  # block origin
-        mosaic[y : y + h, x : x + w, :] = images[i].transpose(1, 2, 0)
+        image_reduced = images[i][:3, :, :] # 剩下的不要了，反正红外图和可见光图本身都差不多，都是叠加出来的，
+        mosaic[y : y + h, x : x + w, :] = image_reduced.transpose(1, 2, 0)
 
     # Resize (optional)
     scale = max_size / ns / max(h, w)

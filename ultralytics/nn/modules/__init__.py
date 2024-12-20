@@ -85,8 +85,10 @@ from .transformer import (
     TransformerEncoderLayer,
     TransformerLayer,
 )
+from .mobileVit import MobileViTBackbone
 
 __all__ = (
+    "MobileViTBackbone",
     "Conv",
     "Conv2",
     "LightConv",

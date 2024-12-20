@@ -120,7 +120,7 @@ class BaseValidator:
             self.args.plots &= trainer.stopper.possible_stop or (trainer.epoch == trainer.epochs - 1)
             model.eval()
         else:
-            if str(self.args.model).endswith(".yaml") and model is None:
+            if str(self.args.model).endswith(".yaml"):
                 LOGGER.warning("WARNING ⚠️ validating an untrained model YAML will result in 0 mAP.")
             callbacks.add_integration_callbacks(self)
             model = AutoBackend(
@@ -156,7 +156,9 @@ class BaseValidator:
             self.dataloader = self.dataloader or self.get_dataloader(self.data.get(self.args.split), self.args.batch)
 
             model.eval()
-            model.warmup(imgsz=(1 if pt else self.args.batch, 3, imgsz, imgsz))  # warmup
+
+            ch = self.data["ch"] if self.data["ch"] else 3
+            model.warmup(imgsz=(1 if pt else self.args.batch, ch, imgsz, imgsz))  # warmup
 
         self.run_callbacks("on_val_start")
         dt = (

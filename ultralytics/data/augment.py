@@ -1362,10 +1362,24 @@ class RandomHSV:
             >>> hsv_augmenter(labels)
             >>> augmented_img = labels["img"]
         """
+        # img = labels["img"]
+        # if self.hgain or self.sgain or self.vgain:
+        #     r = np.random.uniform(-1, 1, 3) * [self.hgain, self.sgain, self.vgain] + 1  # random gains
+        #     hue, sat, val = cv2.split(cv2.cvtColor(img, cv2.COLOR_BGR2HSV))
+        #     dtype = img.dtype  # uint8
+        #
+        #     x = np.arange(0, 256, dtype=r.dtype)
+        #     lut_hue = ((x * r[0]) % 180).astype(dtype)
+        #     lut_sat = np.clip(x * r[1], 0, 255).astype(dtype)
+        #     lut_val = np.clip(x * r[2], 0, 255).astype(dtype)
+        #
+        #     im_hsv = cv2.merge((cv2.LUT(hue, lut_hue), cv2.LUT(sat, lut_sat), cv2.LUT(val, lut_val)))
+        #     cv2.cvtColor(im_hsv, cv2.COLOR_HSV2BGR, dst=img)  # no return needed
+        # return labels
         img = labels["img"]
         if self.hgain or self.sgain or self.vgain:
             r = np.random.uniform(-1, 1, 3) * [self.hgain, self.sgain, self.vgain] + 1  # random gains
-            hue, sat, val = cv2.split(cv2.cvtColor(img, cv2.COLOR_BGR2HSV))
+            # hue, sat, val = cv2.split(cv2.cvtColor(img, cv2.COLOR_BGR2HSV))
             dtype = img.dtype  # uint8
 
             x = np.arange(0, 256, dtype=r.dtype)
@@ -1373,8 +1387,21 @@ class RandomHSV:
             lut_sat = np.clip(x * r[1], 0, 255).astype(dtype)
             lut_val = np.clip(x * r[2], 0, 255).astype(dtype)
 
-            im_hsv = cv2.merge((cv2.LUT(hue, lut_hue), cv2.LUT(sat, lut_sat), cv2.LUT(val, lut_val)))
-            cv2.cvtColor(im_hsv, cv2.COLOR_HSV2BGR, dst=img)  # no return needed
+            # 当输入图像包含红外和可见光时，需要分别调整，再合并
+            if img.shape[-1] > 5:
+                hue, sat, val = cv2.split(cv2.cvtColor(img[..., -3:], cv2.COLOR_BGR2HSV))
+                hue_, sat_, val_ = cv2.split(cv2.cvtColor(img[..., :-3], cv2.COLOR_BGR2HSV))
+                im_hsv = cv2.merge((cv2.LUT(hue, lut_hue), cv2.LUT(sat, lut_sat), cv2.LUT(val, lut_val)))
+                im_hsv_ = cv2.merge((cv2.LUT(hue_, lut_hue), cv2.LUT(sat_, lut_sat), cv2.LUT(val_, lut_val)))
+                img[..., -3:] = cv2.cvtColor(im_hsv, cv2.COLOR_HSV2BGR)  # no return needed
+                img[..., :-3] = cv2.cvtColor(im_hsv_, cv2.COLOR_HSV2BGR)  # no return needed
+                labels['img'] = img
+            else:
+                hue, sat, val = cv2.split(cv2.cvtColor(img, cv2.COLOR_BGR2HSV))
+                im_hsv = cv2.merge((cv2.LUT(hue, lut_hue), cv2.LUT(sat, lut_sat), cv2.LUT(val, lut_val)))
+                cv2.cvtColor(im_hsv, cv2.COLOR_HSV2BGR, dst=img)  # no return needed
+            # im_hsv = cv2.merge((cv2.LUT(hue, lut_hue), cv2.LUT(sat, lut_sat), cv2.LUT(val, lut_val)))
+            # cv2.cvtColor(im_hsv, cv2.COLOR_HSV2BGR, dst=img)  # no return needed
         return labels
 
 
@@ -1555,6 +1582,7 @@ class LetterBox:
         if labels is None:
             labels = {}
         img = labels.get("img") if image is None else image
+
         shape = img.shape[:2]  # current shape [height, width]
         new_shape = labels.pop("rect_shape", self.new_shape)
         if isinstance(new_shape, int):
@@ -1584,9 +1612,29 @@ class LetterBox:
             img = cv2.resize(img, new_unpad, interpolation=cv2.INTER_LINEAR)
         top, bottom = int(round(dh - 0.1)) if self.center else 0, int(round(dh + 0.1))
         left, right = int(round(dw - 0.1)) if self.center else 0, int(round(dw + 0.1))
-        img = cv2.copyMakeBorder(
-            img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=(114, 114, 114)
-        )  # add border
+
+        # 说明是我们的6通道数据首先进行拆分在合并
+        if img.shape[2] > 3 :
+            channels = cv2.split(img)
+            lr_channel = cv2.merge(channels[3:])
+            visible_channel = cv2.merge(channels[:3])
+
+            lr_img = cv2.copyMakeBorder(
+                lr_channel, top, bottom, left, right, cv2.BORDER_CONSTANT, value=(114, 114, 114)
+            )
+
+            visible_img = cv2.copyMakeBorder(
+                visible_channel, top, bottom, left, right, cv2.BORDER_CONSTANT, value=(114, 114, 114)
+            )
+
+            img = cv2.merge((visible_img, lr_img))
+            # print("更新之后img", img.shape)
+        else:
+            img = cv2.copyMakeBorder(
+                img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=(114, 114, 114)
+            )  # add border
+
+
         if labels.get("ratio_pad"):
             labels["ratio_pad"] = (labels["ratio_pad"], (left, top))  # for evaluation
 
@@ -1912,8 +1960,22 @@ class Albumentations:
                     bboxes = np.array(new["bboxes"], dtype=np.float32)
                 labels["instances"].update(bboxes=bboxes)
         else:
-            labels["img"] = self.transform(image=labels["img"])["image"]  # transformed
+            # 说明是我们的6通道数据首先进行拆分在合并
+            _img = labels["img"]
+            if _img.shape[2] > 3:
+                channels = cv2.split(_img)
+                visible_channel = cv2.merge(channels[:3])
+                lr_channel = cv2.merge(channels[3:])
 
+                lr_img = self.transform(image=lr_channel)["image"]
+                visible_img = self.transform(image=visible_channel)["image"]
+
+                _img = cv2.merge((visible_img, lr_img))
+            else:
+                _img = self.transform(image=labels["img"])["image"]
+
+            # labels["img"] = self.transform(image=labels["img"])["image"]  # transformed
+            labels["img"] = _img
         return labels
 
 

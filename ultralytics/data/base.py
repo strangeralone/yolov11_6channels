@@ -151,6 +151,7 @@ class BaseDataset(Dataset):
     def load_image(self, i, rect_mode=True):
         """Loads 1 image from dataset index 'i', returns (im, resized hw)."""
         im, f, fn = self.ims[i], self.im_files[i], self.npy_files[i]
+        ir_filepath = f.replace("visible", "lwir")
         if im is None:  # not cached in RAM
             if fn.exists():  # load npy
                 try:
@@ -161,6 +162,8 @@ class BaseDataset(Dataset):
                     im = cv2.imread(f)  # BGR
             else:  # read image
                 im = cv2.imread(f)  # BGR
+                if self.data["ch"] > 3:  # 如果输入通道数大于3
+                    im = cv2.merge((im, cv2.imread(ir_filepath)))  # 将可见光图像和红外图像合并   前面是可见光，后面是红外
             if im is None:
                 raise FileNotFoundError(f"Image Not Found {f}")
 
@@ -285,6 +288,7 @@ class BaseDataset(Dataset):
 
     def __getitem__(self, index):
         """Returns transformed label information for given index."""
+        # print(self.transforms)
         return self.transforms(self.get_image_and_label(index))
 
     def get_image_and_label(self, index):

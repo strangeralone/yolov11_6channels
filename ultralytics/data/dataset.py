@@ -174,10 +174,12 @@ class YOLODataset(BaseDataset):
     def build_transforms(self, hyp=None):
         """Builds and appends transforms to the list."""
         if self.augment:
+            # print(11, "这一行也走了")
             hyp.mosaic = hyp.mosaic if self.augment and not self.rect else 0.0
             hyp.mixup = hyp.mixup if self.augment and not self.rect else 0.0
             transforms = v8_transforms(self, self.imgsz, hyp)
         else:
+            # print(11, "走了这一行")
             transforms = Compose([LetterBox(new_shape=(self.imgsz, self.imgsz), scaleup=False)])
         transforms.append(
             Format(
@@ -218,10 +220,8 @@ class YOLODataset(BaseDataset):
         # NOTE: do NOT resample oriented boxes
         segment_resamples = 100 if self.use_obb else 1000
         if len(segments) > 0:
-            # make sure segments interpolate correctly if original length is greater than segment_resamples
-            max_len = max([len(s) for s in segments])
-            segment_resamples = (max_len + 1) if segment_resamples < max_len else segment_resamples
-            # list[np.array(segment_resamples, 2)] * num_samples
+            # list[np.array(1000, 2)] * num_samples
+            # (N, 1000, 2)
             segments = np.stack(resample_segments(segments, n=segment_resamples), axis=0)
         else:
             segments = np.zeros((0, segment_resamples, 2), dtype=np.float32)
